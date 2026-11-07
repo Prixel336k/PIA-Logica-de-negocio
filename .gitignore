@@ -1,0 +1,23 @@
+# Entornos virtuales
+.venv/
+env/
+venv/
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest y Cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Archivos de entorno local
+.env
+
+# IDEs y editores
+.idea/
+.vscode/
+*.swp
+*.swo

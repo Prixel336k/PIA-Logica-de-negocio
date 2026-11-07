@@ -1,0 +1,9 @@
+services:
+  farmaexpress-api:
+    build: .
+    container_name: farmaexpress_api_container
+    ports:
+      - "8000:8000"
+    restart: always
+    environment:
+      - ENVIRONMENT=production

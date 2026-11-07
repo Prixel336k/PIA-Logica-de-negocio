@@ -4,3 +4,4 @@ SQLAlchemy>=2,<3
 ruff>=0.6
 fastapi
 uvicorn
+httpx2

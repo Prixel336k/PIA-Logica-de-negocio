@@ -36,7 +36,7 @@ Instrucciones de Instalacion y Ejecucion Local
 
  Clonar el repositorio y activar el entorno virtual
 
-git clone <url-del-repositorio>
+git clone <https://github.com/Prixel336k/PIA-Logica-de-negocio>
 cd PIA-EQ10
 
 Crear y activar entorno virtual

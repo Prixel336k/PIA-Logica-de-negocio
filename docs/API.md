@@ -2,9 +2,9 @@
 
 Esta documentación especifica los contratos de interfaz HTTP REST, esquemas de entrada/salida y códigos de estado implementados en **FarmaExpress API**, alineados con el **BRD**, las **17 Historias de Usuario (Gherkin)**, el **BPMN** y los **ADRs (ADR-001 a ADR-007)**.
 
-- **Interfaz Web Interactiva (HTML/CSS):** `GET /` (`http://localhost:8000/`)
-- **Documentación Interactiva Swagger UI:** `GET /docs` (`http://localhost:8000/docs`)
-- **Especificación OpenAPI JSON:** `GET /openapi.json` (`http://localhost:8000/openapi.json`)
+- **Interfaz Web Interactiva en Producción (Render):** `https://pia-logicadenegocio-eq10.onrender.com/` (Local: `http://localhost:8000/`)
+- **Documentación Interactiva Swagger UI (`/docs`):** `https://pia-logicadenegocio-eq10.onrender.com/docs` (Local: `http://localhost:8000/docs`)
+- **Especificación OpenAPI JSON:** `https://pia-logicadenegocio-eq10.onrender.com/openapi.json` (Local: `http://localhost:8000/openapi.json`)
 
 ---
 

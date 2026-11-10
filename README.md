@@ -2,6 +2,9 @@
 
 **Proyecto Integrador de Aprendizaje (PIA) · Componentes de Lógica de Negocio · Equipo 10**
 
+- 🌐 **Aplicación Web en Producción (Render):** [https://pia-logicadenegocio-eq10.onrender.com](https://pia-logicadenegocio-eq10.onrender.com)
+- 📄 **Documentación Interactiva Swagger / OpenAPI (`/docs`):** [https://pia-logicadenegocio-eq10.onrender.com/docs](https://pia-logicadenegocio-eq10.onrender.com/docs)
+
 ---
 
 ## 1. Descripción del Proyecto y Caso de Negocio
@@ -108,7 +111,10 @@ docker compose run --rm tests
 
 ## 7. Despliegue en Render (Producción)
 
-El proyecto está listo para desplegarse directamente en **Render** usando el `Dockerfile` incluido (el cual escucha dinámicamente en `${PORT:-8000}`):
+- **URL Pública de la Interfaz Web:** [https://pia-logicadenegocio-eq10.onrender.com](https://pia-logicadenegocio-eq10.onrender.com)
+- **URL Pública de Swagger UI (`/docs`):** [https://pia-logicadenegocio-eq10.onrender.com/docs](https://pia-logicadenegocio-eq10.onrender.com/docs)
+
+El proyecto está desplegado directamente en **Render** usando el `Dockerfile` incluido (el cual escucha dinámicamente en `${PORT:-8000}`):
 
 1. Sube tus cambios a tu repositorio de GitHub (`git add . && git commit -m "Implementacion completa FarmaExpress PIA" && git push`).
 2. Entra a [https://dashboard.render.com/](https://dashboard.render.com/) y haz clic en **New +** -> **Web Service**.

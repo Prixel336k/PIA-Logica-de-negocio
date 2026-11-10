@@ -2,8 +2,8 @@
 
 **Proyecto Integrador de Aprendizaje (PIA) · Componentes de Lógica de Negocio · Equipo 10**
 
-- 🌐 **Aplicación Web en Producción (Render):** [https://pia-logicadenegocio-eq10.onrender.com](https://pia-logicadenegocio-eq10.onrender.com)
-- 📄 **Documentación Interactiva Swagger / OpenAPI (`/docs`):** [https://pia-logicadenegocio-eq10.onrender.com/docs](https://pia-logicadenegocio-eq10.onrender.com/docs)
+- **Aplicación Web en Producción (Render):** [https://pia-logicadenegocio-eq10.onrender.com](https://pia-logicadenegocio-eq10.onrender.com)
+- **Documentación Interactiva Swagger / OpenAPI (`/docs`):** [https://pia-logicadenegocio-eq10.onrender.com/docs](https://pia-logicadenegocio-eq10.onrender.com/docs)
 
 ---
 

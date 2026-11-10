@@ -16,6 +16,11 @@ htmlcov/
 # Archivos de entorno local
 .env
 
+# Bases de datos locales temporales (SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
 # IDEs y editores
 .idea/
 .vscode/

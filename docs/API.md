@@ -1,155 +1,68 @@
-Documentación del Contrato API - FarmaExpress
+# Documentación del Contrato API y OpenAPI - FarmaExpress (Equipo 10)
 
-Esta documentación especifica los contratos de interfaz HTTP, esquemas de entrada/salida y códigos de estado implementados en el servicio web FarmaExpress API.
+Esta documentación especifica los contratos de interfaz HTTP REST, esquemas de entrada/salida y códigos de estado implementados en **FarmaExpress API**, alineados con el **BRD**, las **17 Historias de Usuario (Gherkin)**, el **BPMN** y los **ADRs (ADR-001 a ADR-007)**.
 
-Estándar de Errores y Excepciones
+- **Interfaz Web Interactiva (HTML/CSS):** `GET /` (`http://localhost:8000/`)
+- **Documentación Interactiva Swagger UI:** `GET /docs` (`http://localhost:8000/docs`)
+- **Especificación OpenAPI JSON:** `GET /openapi.json` (`http://localhost:8000/openapi.json`)
 
-La API utiliza un patrón unificado de manejo de excepciones (run_action y get_venta_or_404) para devolver respuestas claras y estructuradas según las reglas del negocio farmacéutico:
+---
 
-404 Not Found: El recurso (Venta) no existe en el sistema.
+## Estándar de Errores y Excepciones en Swagger
 
-409 Conflict: Conflicto de estado en la transacción (ej. intentar modificar o cobrar una venta que ya fue completada).
+La API utiliza un patrón unificado de traducción de excepciones del dominio (`ejecutar_operacion_negocio`, `run_action` y `get_venta_or_404`) documentado explícitamente en los esquemas de respuesta (`responses`) de Swagger:
 
-422 Unprocessable Content: Violación de reglas del dominio o datos inválidos (ej. cantidades negativas, lotes caducados o precios menores a cero).
+| Código HTTP | Significado en el Dominio de FarmaExpress | Ejemplo de Respuesta (`ErrorResponse`) |
+| :--- | :--- | :--- |
+| **403 Forbidden** | Violación de permisos por rol (`RNF-01`, `RNF-07`, `BR-05`, `BR-14` - `UnauthorizedRoleAction`). Ej.: Cajero intentando validar un medicamento especial o modificar existencias de inventario. | `{"detail": "Permiso denegado por regla de negocio: El cajero tiene prohibido modificar o ajustar existencias de inventario directamente (BR-14)."}` |
+| **404 Not Found** | El recurso solicitado (`Venta`, `Inventario`, `SolicitudDeSustitucion`, `DiferenciaDeInventario` o `SolicitudDeResurtido`) no existe en el sistema. | `{"detail": "Lo sentimos, la venta solicitada no se encuentra registrada en el sistema."}` |
+| **409 Conflict** | Transición inválida en la Máquina de Estados (`InvalidOrderTransition`). Ej.: intentar modificar o volver a cobrar una venta ya `COMPLETADA` o `RECHAZADA`. | `{"detail": "Atención: No se pudo completar la operación debido al estado actual: La venta V-001 ya ha sido completada y no admite más cambios de estado."}` |
+| **422 Unprocessable Content** | Violación de reglas de negocio farmacéutico (`BR-01` a `BR-16` / `InvalidDomainData`) o rechazo del procesador de pagos (`ADR-004`). | `{"detail": "Error de validación en las reglas de negocio farmacéutico: Lote no vendible: El lote se encuentra caducado (BR-02)."}` |
 
-Especificación de Endpoints
+---
 
-1. Consultar detalles de una venta
+## Catálogo de Endpoints por Módulo de Negocio
 
-Ruta: GET /orders/{venta_id}
+### 1. Ventas y Caja (`CU-01`, `CU-04`, `US-01`, `US-04`, `US-17`)
+- `GET /orders`: Lista todas las ventas registradas en el sistema.
+- `POST /orders`: Inicia una nueva operación de venta en estado `EN_CAPTURA` (`RF-01`, `US-01`).
+- `GET /orders/{venta_id}`: Consulta el detalle de una venta, sus líneas, validaciones y eventos emitidos.
+- `POST /orders/{venta_id}/lineas`: Agrega un producto a la venta verificando existencia (`BR-01`), que el lote no esté caducado (`BR-02` / `US-04`) ni retirado (`BR-03`), y detectando automáticamente si requiere validación especial (`BR-04`).
+- `POST /orders/{venta_id}/completar`: Ejecuta `CU-04` siguiendo el orden transaccional de `ADR-004`:
+  1. Verifica que no existan validaciones especiales pendientes o rechazadas (`BR-04`, `BR-05`).
+  2. Verifica disponibilidad y vendibilidad de cada línea (`BR-01`, `BR-02`, `BR-03`).
+  3. Procesa el cobro con `ProcesadorDePagos`. Si se envía `?simular_fallo_pago=true`, rechaza la venta y **no descuenta el inventario** (`ADR-004`).
+  4. Descuenta el inventario del lote utilizado (`BR-07`, `US-17`), emite `ExistenciaBajaDetectada` si cae por debajo del nivel mínimo (`BR-09`, `US-11`) y marca la venta como `COMPLETADA`.
 
-Descripción: Devuelve la información detallada de una venta registrada, sus líneas de producto y eventos emitidos.
+### 2. Validación Farmacéutica (`CU-02`, `US-03`, `BR-04`, `BR-05`)
+- `GET /validaciones-pendientes`: Lista los medicamentos con requisitos especiales que requieren intervención del Responsable de Farmacia.
+- `POST /orders/{venta_id}/validaciones`: Permite al **Responsable de Farmacia** aprobar o rechazar el requisito especial (`BR-05`). Si el rol es `cajero`, devuelve `403 Forbidden`.
 
-Respuestas
+### 3. Atención y Validación de Sustituciones (`CU-03`, `US-07`, `US-08`, `BR-08`)
+- `GET /sustituciones`: Lista todas las solicitudes de sustitución y sus decisiones.
+- `GET /productos/{producto_id}/alternativas/{sucursal_id}`: Consulta productos sustitutos que sí cuentan con existencia vendible en la sucursal (`Secuencia 2`).
+- `POST /sustituciones`: Registra una solicitud de sustitución ante falta de existencia (`US-07`).
+- `POST /sustituciones/{solicitud_id}/validar`: El **Responsable de Farmacia** aprueba o rechaza la alternativa propuesta (`US-08`, `BR-08`).
+- `POST /sustituciones/{solicitud_id}/decision-cliente`: Registra si el cliente acepta la alternativa explicada; si acepta, asigna lote automáticamente (`FEFO`) y agrega el producto a la venta en una sola `UnidadDeTrabajo` (`ADR-004`, `Secuencia 2`).
 
-200 OK
+### 4. Inventario, Lotes, Caducidades y Visibilidad entre Sucursales (`US-02`, `US-05`, `US-06`, `US-09`, `US-13`, `US-15`)
+- `GET /inventarios/{producto_id}/{sucursal_id}`: Consulta existencia total, existencia vendible, alerta de nivel mínimo y estado de cada lote.
+- `GET /inventarios-sucursal/{sucursal_id}`: Lista el inventario completo de todos los productos del catálogo en una sucursal (`US-09`).
+- `GET /disponibilidad-sucursales/{producto_id}`: Consulta la disponibilidad en tiempo real de un producto en todas las sucursales de FarmaExpress (`US-13`, `BR-16`, `REP-05`).
+- `POST /lotes/retirar`: Permite al **Responsable de Farmacia** bloquear un lote como `RETIRADO` para impedir su venta en futuras operaciones (`US-06`, `BR-03`).
 
-{
-  "id": "V-001",
-  "cajero_id": "CAJ-01",
-  "sucursal_id": "SUC-01",
-  "estado": "EN_CAPTURA",
-  "total": "500.00",
-  "moneda": "MXN",
-  "lineas": [
-    {
-      "producto_id": "PROD-01",
-      "lote": "LOTE-100",
-      "cantidad": 2,
-      "precio_unitario": "250.00",
-      "subtotal": "500.00",
-      "validacion": "VALIDADA"
-    }
-  ],
-  "eventos": [
-    "LineaAgregada"
-  ]
-}
+### 5. Almacén: Recepción de Mercancía y Diferencias de Inventario (`CU-05`, `US-10`, `US-14`, `BR-13`, `BR-14`, `BR-15`)
+- `GET /recepciones`: Lista las recepciones de mercancía registradas en Almacén.
+- `POST /recepciones`: El personal de **Almacén** registra el ingreso de nuevos lotes con fecha de caducidad y cantidad (`CU-05`, `US-14`, `BR-15`). El rol `cajero` es bloqueado con `403 Forbidden` (`BR-14`).
+- `GET /diferencias-inventario`: Lista las discrepancias reportadas entre el inventario físico y el registrado (`REP-06`).
+- `POST /diferencias-inventario`: El personal de **Almacén** reporta una diferencia encontrada durante el conteo físico (`US-10`, `BR-13`, `RF-14`).
+- `POST /diferencias-inventario/{diferencia_id}/revisar`: El **Responsable de Farmacia** o **Administración** revisa el hallazgo y autoriza o rechaza el ajuste auditable sobre el lote (`RF-15`, `RNF-08`).
 
+### 6. Compras y Análisis de Resurtido (`US-11`, `US-12`, `BR-09`, `BR-10`, `RF-11`, `RF-12`)
+- `GET /resurtidos`: Consulta las alertas de existencia baja y el estado de las solicitudes de resurtido (`REP-01`, `REP-07`).
+- `POST /resurtidos/{resurtido_id}/analizar`: El área de **Compras** registra su decisión manual de solicitar o descartar el abastecimiento, cumpliendo estrictamente `BR-10` (*no generar compras automáticas*).
 
-404 Not Found
-
-{
-  "detail": "Lo sentimos, la venta solicitada no se encuentra registrada en el sistema."
-}
-
-
-2. Agregar producto a la venta
-
-Ruta: POST /orders/{venta_id}/lineas
-
-Descripción: Agrega un nuevo ítem a la venta validando reglas de dominio (precios y cantidades positivas).
-
-Cuerpo de la Petición (Request Body)
-
-{
-  "producto_id": "PROD-01",
-  "numero_lote": "LOTE-100",
-  "cantidad": 2,
-  "precio_unitario": 250.00
-}
-
-
-Respuestas
-
-200 OK
-
-{
-  "mensaje_para_cliente": "Su orden ha sido procesada y confirmada exitosamente.",
-  "venta_id": "V-001",
-  "estado_actual": "EN_CAPTURA",
-  "total": "500.00"
-}
-
-
-422 Unprocessable Content (Cantidad negativa o datos inválidos)
-
-{
-  "detail": "Error de validación en las reglas de negocio farmacéutico -> La cantidad debe ser un entero estrictamente positivo (mayor a 0)."
-}
-
-
-404 Not Found
-
-{
-  "detail": "Lo sentimos, la venta solicitada no se encuentra registrada en el sistema."
-}
-
-
-3. Completar y cobrar una venta de forma segura
-
-Ruta: POST /orders/{venta_id}/completar
-
-Descripción: Ejecuta el caso de uso CU-04. Procesa el pago simulado, descuenta el inventario del lote correspondiente y marca la venta como completada.
-
-Respuestas
-
-200 OK
-
-{
-  "mensaje_para_cliente": "Su orden ha sido procesada y confirmada exitosamente.",
-  "venta_id": "V-001",
-  "estado_actual": "COMPLETADA",
-  "total": "500.00"
-}
-
-
-409 Conflict (Re-ejecución sobre una orden completada)
-
-{
-  "detail": "Atención: No se pudo completar la operación debido al estado actual de la venta -> La venta V-001 ya ha sido completada y no admite más cambios de estado."
-}
-
-
-404 Not Found
-
-{
-  "detail": "Lo sentimos, la venta solicitada no se encuentra registrada en el sistema."
-}
-
-
-4. Consultar disponibilidad por sucursal
-
-Ruta: GET /inventarios/{producto_id}/{sucursal_id}
-
-Descripción: Permite consultar los lotes disponibles y stock total de un producto en una sucursal específica.
-
-Respuestas
-
-200 OK
-
-{
-  "mensaje": "Consulta realizada correctamente.",
-  "informacion": {
-    "producto_id": "PROD-01",
-    "sucursal_id": "SUC-01",
-    "stock_total": 20,
-    "lotes_disponibles": [
-      {
-        "lote": "LOTE-100",
-        "caducidad": "2027-06-01",
-        "cantidad": 20
-      }
-    ]
-  }
-}
+### 7. Administración, Indicadores Consolidados y Trazabilidad (`US-16`, `BR-12`, `RNF-03`, `RNF-08`)
+- `GET /indicadores`: Devuelve los **5 Indicadores de Negocio (`IND-01` a `IND-05`)** y los **Reportes Consolidados (`REP-01` a `REP-07`)** para la toma de decisiones de Administración (`US-16`).
+- `POST /politicas/caducidad`: Configura el periodo en días para identificar productos próximos a caducar (`BR-12`, `US-05`).
+- `GET /bitacora-eventos`: Consulta el historial de eventos de dominio y alertas publicadas (`RNF-03`, `RNF-08`).

@@ -1,4 +1,19 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: farmaexpress_db_container
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-farmaexpress}
+      POSTGRES_USER: ${POSTGRES_USER:-farmaexpress}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-farmaexpress_local_dev}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-farmaexpress}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - farmaexpress_pgdata:/var/lib/postgresql/data
+
   farmaexpress-api:
     build: .
     container_name: farmaexpress_api_container
@@ -6,4 +21,24 @@ services:
       - "8000:8000"
     restart: always
     environment:
-      - ENVIRONMENT=production
+      ENVIRONMENT: "production"
+      PORT: "8000"
+      DATABASE_URL: "sqlite:///./farmaexpress.db"
+      DIAS_PROXIMIDAD_CADUCIDAD: "30"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  tests:
+    build: .
+    container_name: farmaexpress_tests_container
+    command: ["python", "-m", "pytest", "--cov=src", "--cov-report=term-missing"]
+    environment:
+      ENVIRONMENT: "testing"
+      DATABASE_URL: "sqlite:///./test_farmaexpress.db"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  farmaexpress_pgdata:

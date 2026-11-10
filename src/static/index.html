@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FarmaExpress · Sistema de Gestión Farmacéutica</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+  <!-- BARRA SUPERIOR CON SELECTOR DE ROL Y ACCIONES RÁPIDAS -->
+  <header class="topbar">
+    <div class="brand-box">
+      <div class="brand-icon">+</div>
+      <div class="brand-title">
+        <h1>FarmaExpress</h1>
+        <span>Control de Ventas, Lotes, Caducidades, Sustituciones y Resurtido · Equipo 10</span>
+      </div>
+    </div>
+
+    <div class="topbar-controls">
+      <div class="role-selector-box">
+        <label for="select-rol">Operando como (Rol activo):</label>
+        <select id="select-rol" onchange="cambiarRolActivo()">
+          <option value="cajero" data-user="CAJ-01">Cajero (Ana Gómez · CAJ-01)</option>
+          <option value="responsable_farmacia" data-user="FARM-01">Responsable de Farmacia (Dr. Carlos Ruiz · FARM-01)</option>
+          <option value="almacen" data-user="ALM-01">Personal de Almacén (Roberto Díaz · ALM-01)</option>
+          <option value="compras" data-user="COMP-01">Área de Compras (Laura Méndez · COMP-01)</option>
+          <option value="administracion" data-user="ADMIN-01">Administración (Dirección General · ADMIN-01)</option>
+        </select>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="reiniciarDemo()">↻ Reiniciar Datos Demo</button>
+      <a class="btn btn-primary btn-sm" href="/docs" target="_blank" rel="noopener">Abrir Swagger API ↗</a>
+    </div>
+  </header>
+
+  <!-- PESTAÑAS DE NAVEGACIÓN CLARAS Y ENTENDIBLES -->
+  <nav class="nav-tabs">
+    <button class="nav-tab active" data-tab="ventas" onclick="mostrarTab('ventas')">
+      1. Punto de Venta (Caja)
+    </button>
+    <button class="nav-tab" data-tab="farmacia" onclick="mostrarTab('farmacia')">
+      2. Validación Farmacéutica y Sustituciones
+      <span id="badge-farmacia" class="badge-counter" style="display:none">0</span>
+    </button>
+    <button class="nav-tab" data-tab="inventario" onclick="mostrarTab('inventario')">
+      3. Inventario por Lote y Sucursales
+    </button>
+    <button class="nav-tab" data-tab="almacen" onclick="mostrarTab('almacen')">
+      4. Almacén y Diferencias Físicas
+      <span id="badge-almacen" class="badge-counter" style="display:none">0</span>
+    </button>
+    <button class="nav-tab" data-tab="compras" onclick="mostrarTab('compras')">
+      5. Compras y Resurtido
+      <span id="badge-compras" class="badge-counter" style="display:none">0</span>
+    </button>
+    <button class="nav-tab" data-tab="admin" onclick="mostrarTab('admin')">
+      6. Administración e Indicadores
+    </button>
+  </nav>
+
+  <main class="container">
+
+    <!-- GUÍA CONTEXTUAL DEL ROL SELECCIONADO -->
+    <div class="role-guide-banner">
+      <div>
+        <h2 id="rol-guia-titulo">Modo Cajero activo (CAJ-01 · Ana Gómez)</h2>
+        <p id="rol-guia-desc">
+          Como Cajero puedes iniciar ventas, registrar productos disponibles, solicitar sustituciones cuando no hay existencia y procesar el cobro.
+          <strong>Restricciones del negocio:</strong> No puedes autorizar medicamentos con requisitos especiales (BR-05) ni modificar existencias de inventario directamente (BR-14).
+        </p>
+      </div>
+      <div>
+        <span class="badge badge-info" id="badge-politica-dias">Política actual: Lotes próximos a caducar ≤ 30 días (BR-12)</span>
+      </div>
+    </div>
+
+    <!-- RESUMEN RÁPIDO DE INDICADORES EN VIVO -->
+    <section class="kpi-grid" id="kpi-bar">
+      <div class="kpi-card">
+        <span class="kpi-label">Existencia Baja (IND-01)</span>
+        <strong class="kpi-value" id="kpi-bajo-minimo">0</strong>
+        <span class="kpi-help">Productos bajo nivel mínimo (BR-09)</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Próximos a Caducar (IND-02)</span>
+        <strong class="kpi-value" id="kpi-proximos">0</strong>
+        <span class="kpi-help">Requieren revisión preventiva (BR-11)</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Lotes Caducados (IND-03)</span>
+        <strong class="kpi-value" id="kpi-caducados">0</strong>
+        <span class="kpi-help">Bloqueados automáticamente para venta (BR-02)</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Lotes Retirados (IND-04)</span>
+        <strong class="kpi-value" id="kpi-retirados">0</strong>
+        <span class="kpi-help">Bloqueados por retiro sanitario (BR-03)</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Diferencias Físicas (IND-05)</span>
+        <strong class="kpi-value" id="kpi-diferencias">0</strong>
+        <span class="kpi-help">Conteos físicos vs sistema (BR-13)</span>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECCIÓN 1: PUNTO DE VENTA Y CAJA (CU-01, CU-04)
+         ========================================================= -->
+    <section id="tab-ventas" class="view-section active">
+      <div class="grid-2">
+        <!-- Columna izquierda: Detalle de la venta seleccionada -->
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Operación de Venta Actual (US-01, US-17)</h3>
+                <p>Selecciona una venta abierta o crea una nueva para registrar productos y cobrar.</p>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <select id="select-venta-activa" onchange="cargarVentaSeleccionada()" style="padding:7px 10px; border-radius:8px; border:1px solid #cbd5e1; font-weight:700;"></select>
+                <button class="btn btn-secondary btn-sm" onclick="crearNuevaVentaRapida()">+ Nueva Venta</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="detalle-venta-box"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Demostración Rápida de Reglas de Negocio en Venta</h3>
+                <p>Prueba con un clic cómo el dominio protege las reglas de FarmaExpress antes de permitir una venta.</p>
+              </div>
+            </div>
+            <div class="card-body" style="display:flex; flex-wrap:wrap; gap:10px;">
+              <button class="btn btn-secondary btn-sm" onclick="probarReglaCaducado()">
+                Probar bloqueo de Lote Caducado (BR-02 / US-04)
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="probarReglaRetirado()">
+                Probar bloqueo de Lote Retirado (BR-03 / US-06)
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="probarReglaSinExistencia()">
+                Probar producto sin existencia (BR-01 / US-02)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna derecha: Agregar producto a la venta -->
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Agregar Producto a la Venta (CU-01)</h3>
+                <p>El sistema valida existencia (BR-01), vigencia del lote (BR-02/BR-03) y requisitos especiales (BR-04).</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <form id="form-agregar-linea" onsubmit="agregarProductoAVenta(event)">
+                <div class="form-group">
+                  <label for="venta-prod-id">Producto solicitado por el cliente:</label>
+                  <select id="venta-prod-id" onchange="actualizarInfoProductoVenta()" required></select>
+                  <span id="info-requisito-prod" class="help-hint"></span>
+                </div>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label for="venta-lote">Lote a surtir:</label>
+                    <select id="venta-lote"></select>
+                    <span class="help-hint">Por defecto asigna el lote disponible que vence primero (FEFO).</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="venta-cantidad">Cantidad de unidades:</label>
+                    <input type="number" id="venta-cantidad" value="1" min="1" required />
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">
+                  + Registrar Producto en la Venta
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECCIÓN 2: VALIDACIÓN FARMACÉUTICA Y SUSTITUCIONES (CU-02, CU-03)
+         ========================================================= -->
+    <section id="tab-farmacia" class="view-section">
+      <div class="grid-equal">
+        <!-- Validaciones de medicamentos con requisitos especiales -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>1. Medicamentos con Requisitos Especiales (US-03 · BR-04 y BR-05)</h3>
+              <p>Los antibióticos o medicamentos sujetos a condiciones especiales requieren la autorización del Responsable de Farmacia antes de poder cobrarse.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="lista-validaciones-pendientes"></div>
+          </div>
+        </div>
+
+        <!-- Solicitudes de Sustitución (CU-03) -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>2. Atención a Solicitudes de Sustitución (CU-03 · US-07, US-08 · BR-08)</h3>
+              <p>Cuando un producto no tiene existencia, se registra la solicitud, el Responsable de Farmacia valida la alternativa y el cliente decide si la acepta.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <form id="form-nueva-sustitucion" onsubmit="registrarSolicitudSustitucion(event)" style="margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid #e2e8f0;">
+              <h4 style="margin:0 0 10px; font-size:14px;">Registrar nueva solicitud de sustitución (US-07)</h4>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Venta activa:</label>
+                  <select id="sust-venta-id" required></select>
+                </div>
+                <div class="form-group">
+                  <label>Producto sin existencia:</label>
+                  <select id="sust-prod-orig" required></select>
+                </div>
+                <div class="form-group">
+                  <label>Cantidad:</label>
+                  <input type="number" id="sust-cantidad" value="1" min="1" required />
+                </div>
+              </div>
+              <button type="submit" class="btn btn-secondary btn-sm">+ Solicitar Alternativa para el Cliente</button>
+            </form>
+
+            <div id="lista-sustituciones"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bloqueo / Retiro de Lotes por el Responsable de Farmacia -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>3. Identificar y Bloquear Lotes Retirados (US-06, US-15 · BR-03)</h3>
+            <p>El Responsable de Farmacia puede retirar un lote de la operación para impedir inmediatamente que sus productos se vendan.</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="grid-2">
+            <form onsubmit="retirarLoteOperacion(event)">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Sucursal:</label>
+                  <select id="ret-sucursal" onchange="cargarLotesParaRetiro()">
+                    <option value="SUC-01">SUC-01 · Sucursal Centro</option>
+                    <option value="SUC-02">SUC-02 · Sucursal San Nicolás</option>
+                    <option value="SUC-03">SUC-03 · Sucursal San Pedro</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Producto y Lote disponible a retirar:</label>
+                  <select id="ret-lote-combo" required></select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Motivo del retiro sanitario u operativo:</label>
+                <input type="text" id="ret-motivo" placeholder="Ej. Alerta sanitaria COFEPRIS o empaque deteriorado" required />
+              </div>
+              <button type="submit" class="btn btn-danger btn-sm">Bloquear y Retirar Lote (BR-03)</button>
+            </form>
+
+            <div>
+              <h4 style="margin:0 0 10px; font-size:14px;">Lotes actualmente retirados y bloqueados (US-15 / REP-04)</h4>
+              <div id="lista-lotes-retirados"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECCIÓN 3: INVENTARIO POR LOTE Y VISIBILIDAD ENTRE SUCURSALES
+         ========================================================= -->
+    <section id="tab-inventario" class="view-section">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>Control de Inventario por Producto, Lote y Fecha de Caducidad (US-02, US-05, US-09 · BR-06)</h3>
+            <p>Consulta detallada de lotes disponibles, próximos a caducar, caducados y retirados en cada sucursal.</p>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <label for="inv-sucursal-filtro" style="font-size:13px; font-weight:700;">Sucursal:</label>
+            <select id="inv-sucursal-filtro" onchange="cargarInventarioSucursal()" style="padding:7px 12px; border-radius:8px; border:1px solid #cbd5e1; font-weight:700;">
+              <option value="SUC-01">SUC-01 · Sucursal Centro (Monterrey)</option>
+              <option value="SUC-02">SUC-02 · Sucursal San Nicolás (Norte)</option>
+              <option value="SUC-03">SUC-03 · Sucursal San Pedro (Sur)</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Tipo / Requisito</th>
+                  <th>Existencia Vendible</th>
+                  <th>Nivel Mínimo</th>
+                  <th>Estado de Stock</th>
+                  <th>Desglose de Lotes y Fechas de Caducidad</th>
+                </tr>
+              </thead>
+              <tbody id="tabla-inventario-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Visibilidad entre Sucursales (US-13, BR-16) -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>Visibilidad de Disponibilidad entre Sucursales (US-13 · BR-16 · REP-05)</h3>
+            <p>Cuando un producto no está disponible en una ubicación, permite identificar en qué otra sucursal de FarmaExpress sí cuenta con existencia.</p>
+          </div>
+          <div>
+            <select id="multi-prod-select" onchange="consultarDisponibilidadMultisucursal()" style="padding:7px 12px; border-radius:8px; border:1px solid #cbd5e1; font-weight:700;"></select>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="multisucursal-box"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECCIÓN 4: ALMACÉN, RECEPCIÓN Y DIFERENCIAS DE INVENTARIO
+         ========================================================= -->
+    <section id="tab-almacen" class="view-section">
+      <div class="grid-equal">
+        <!-- Recepción de mercancía (CU-05, US-14, BR-15) -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>1. Recepción de Mercancía en Almacén (CU-05 · US-14 · BR-06, BR-15)</h3>
+              <p>Registra la entrada de productos con su número de lote y fecha de caducidad para actualizar el inventario de la sucursal.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <form onsubmit="registrarRecepcionAlmacen(event)">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Sucursal receptora:</label>
+                  <select id="rec-sucursal" required>
+                    <option value="SUC-01">SUC-01 · Sucursal Centro</option>
+                    <option value="SUC-02">SUC-02 · Sucursal San Nicolás</option>
+                    <option value="SUC-03">SUC-03 · Sucursal San Pedro</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Producto recibido:</label>
+                  <select id="rec-producto" required></select>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Número de Lote (D-03):</label>
+                  <input type="text" id="rec-lote" placeholder="Ej. LOTE-2027-A" required />
+                </div>
+                <div class="form-group">
+                  <label>Fecha de Caducidad (D-04):</label>
+                  <input type="date" id="rec-caducidad" required />
+                </div>
+                <div class="form-group">
+                  <label>Cantidad recibida:</label>
+                  <input type="number" id="rec-cantidad" value="15" min="1" required />
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary">Registrar Entrada en Almacén (US-14)</button>
+            </form>
+
+            <hr style="border:0; border-top:1px solid #e2e8f0; margin:20px 0;" />
+            <h4 style="margin:0 0 10px; font-size:14px;">Historial reciente de recepciones</h4>
+            <div id="lista-recepciones"></div>
+          </div>
+        </div>
+
+        <!-- Diferencias entre inventario físico y registrado (US-10, BR-13, BR-14, RF-14, RF-15) -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>2. Control de Diferencias de Inventario Físico vs Registrado (US-10 · BR-13, BR-14)</h3>
+              <p>Almacén registra discrepancias detectadas en conteo físico. Los ajustes requieren revisión y autorización previa (RF-15, RNF-08).</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <form onsubmit="registrarDiferenciaFisica(event)" style="margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid #e2e8f0;">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Sucursal:</label>
+                  <select id="dif-sucursal" onchange="cargarLotesParaDiferencia()">
+                    <option value="SUC-01">SUC-01 · Sucursal Centro</option>
+                    <option value="SUC-02">SUC-02 · Sucursal San Nicolás</option>
+                    <option value="SUC-03">SUC-03 · Sucursal San Pedro</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Producto y Lote auditado:</label>
+                  <select id="dif-lote-combo" required></select>
+                </div>
+                <div class="form-group">
+                  <label>Cantidad física contada en estante:</label>
+                  <input type="number" id="dif-fisica" min="0" value="18" required />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Descripción del hallazgo (motivo de la discrepancia):</label>
+                <input type="text" id="dif-motivo" placeholder="Ej. Conteo físico mensual: 2 unidades dañadas o faltantes en anaquel" required />
+              </div>
+              <button type="submit" class="btn btn-secondary btn-sm">Reportar Diferencia para Revisión (US-10)</button>
+            </form>
+
+            <h4 style="margin:0 0 10px; font-size:14px;">Diferencias registradas y autorización de ajustes (REP-06)</h4>
+            <div id="lista-diferencias"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECCIÓN 5: COMPRAS Y ANÁLISIS DE RESURTIDO (BR-09, BR-10, US-11, US-12)
+         ========================================================= -->
+    <section id="tab-compras" class="view-section">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>Detección de Existencia Baja y Análisis de Resurtido por Compras (US-11, US-12 · BR-09 y BR-10)</h3>
+            <p>
+              Cuando la existencia de un producto cae por debajo del nivel mínimo, el sistema genera la alerta para Compras (BR-09).
+              <strong>Regla BR-10:</strong> El sistema NO genera compras automáticas; requiere el análisis y decisión del área de Compras.
+            </p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="lista-resurtidos"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECCIÓN 6: ADMINISTRACIÓN, INDICADORES Y TRAZABILIDAD (US-16, BR-12, RNF-03)
+         ========================================================= -->
+    <section id="tab-admin" class="view-section">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>Reportes Consolidados para Toma de Decisiones (US-16 · REP-01 a REP-07)</h3>
+              <p>Resumen ejecutivo de productos con existencia baja, próximos a caducar, caducados, lotes retirados y diferencias.</p>
+            </div>
+          </div>
+          <div class="card-body" id="admin-reportes-box"></div>
+        </div>
+
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Política de Proximidad a Caducidad (BR-12 · US-05)</h3>
+                <p>Define con cuántos días de anticipación FarmaExpress considera un lote como próximo a caducar.</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <form onsubmit="guardarPoliticaCaducidad(event)">
+                <div class="form-group">
+                  <label for="pol-dias">Periodo de alerta preventiva (en días):</label>
+                  <input type="number" id="pol-dias" value="30" min="1" max="365" required />
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Actualizar Política en FarmaExpress (BR-12)</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Bitácora de Trazabilidad y Eventos de Dominio (RNF-03, RNF-08)</h3>
+                <p>Registro auditable de operaciones, ventas, entradas, retiros, validaciones y alertas emitidas.</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="bitacora-eventos-box"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- CONTENEDOR DE NOTIFICACIONES ENTENDIBLES PARA EL USUARIO -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <script>
+    const estadoApp = {
+      rol: 'cajero',
+      usuarioId: 'CAJ-01',
+      contexto: null,
+      ventas: [],
+      ventaSeleccionadaId: 'V-001',
+      inventarioSucursal: [],
+      indicadores: null,
+      validacionesPendientes: [],
+      sustituciones: [],
+      diferencias: [],
+      resurtidos: [],
+      recepciones: []
+    };
+
+    const GUIA_ROLES = {
+      cajero: {
+        titulo: 'Modo Cajero activo (CAJ-01 · Ana Gómez)',
+        desc: 'Como Cajero puedes iniciar ventas, registrar productos disponibles, solicitar sustituciones cuando no hay existencia y procesar el cobro. Restricciones del negocio: No puedes autorizar medicamentos con requisitos especiales (BR-05) ni modificar existencias de inventario directamente (BR-14).'
+      },
+      responsable_farmacia: {
+        titulo: 'Modo Responsable de Farmacia activo (FARM-01 · Dr. Carlos Ruiz)',
+        desc: 'Como Responsable de Farmacia estás autorizado para aprobar o rechazar medicamentos con requisitos especiales (US-03 / BR-05), validar solicitudes de sustitución (US-08 / BR-08), retirar lotes de la operación (US-06 / BR-03) y autorizar ajustes por diferencias de inventario (RF-15).'
+      },
+      almacen: {
+        titulo: 'Modo Personal de Almacén activo (ALM-01 · Roberto Díaz)',
+        desc: 'Como Personal de Almacén registras la recepción de mercancía con su lote y fecha de caducidad (US-14 / BR-15) y reportas diferencias encontradas durante el conteo físico de estantes (US-10 / BR-13).'
+      },
+      compras: {
+        titulo: 'Modo Área de Compras activo (COMP-01 · Laura Méndez)',
+        desc: 'Como Analista de Compras recibes las alertas de productos cuya existencia cayó por debajo del nivel mínimo (US-11 / BR-09) y registras manualmente la decisión de abastecimiento (US-12 / BR-10: no existen compras automáticas).'
+      },
+      administracion: {
+        titulo: 'Modo Administración activo (ADMIN-01 · Dirección General)',
+        desc: 'Como Administración de FarmaExpress consultas los indicadores consolidados (IND-01 a IND-05), los reportes ejecutivos (REP-01 a REP-07, US-16), la bitácora de auditoría y defines políticas como el periodo de proximidad a caducidad (BR-12).'
+      }
+    };
+
+    function notificar(mensaje, esError = false) {
+      const cont = document.getElementById('toast-container');
+      const div = document.createElement('div');
+      div.className = 'toast' + (esError ? ' error' : '');
+      div.textContent = mensaje;
+      cont.appendChild(div);
+      setTimeout(() => div.remove(), 5500);
+    }
+
+    async function llamarApi(url, metodo = 'GET', body = undefined) {
+      const opciones = { method: metodo, headers: {} };
+      if (body !== undefined) {
+        opciones.headers['Content-Type'] = 'application/json';
+        opciones.body = JSON.stringify(body);
+      }
+      const resp = await fetch(url, opciones);
+      const data = await resp.json().catch(() => ({ detail: 'Error inesperado de comunicación' }));
+      if (!resp.ok) {
+        throw new Error(data.detail || 'No se pudo completar la operación');
+      }
+      return data;
+    }
+
+    function cambiarRolActivo() {
+      const sel = document.getElementById('select-rol');
+      estadoApp.rol = sel.value;
+      estadoApp.usuarioId = sel.options[sel.selectedIndex].dataset.user;
+      const guia = GUIA_ROLES[estadoApp.rol];
+      document.getElementById('rol-guia-titulo').textContent = guia.titulo;
+      document.getElementById('rol-guia-desc').textContent = guia.desc;
+      notificar(`Cambiaste al perfil: ${guia.titulo}`);
+      renderizarTodo();
+    }
+
+    function mostrarTab(tabId) {
+      document.querySelectorAll('.nav-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+      });
+      document.querySelectorAll('.view-section').forEach(sec => {
+        sec.classList.toggle('active', sec.id === 'tab-' + tabId);
+      });
+    }
+
+    async function cargarDatosGlobales() {
+      const [ctx, ventas, valPend, susts, difs, resurt, recs, ind] = await Promise.all([
+        llamarApi('/contexto-demo'),
+        llamarApi('/orders'),
+        llamarApi('/validaciones-pendientes'),
+        llamarApi('/sustituciones'),
+        llamarApi('/diferencias-inventario'),
+        llamarApi('/resurtidos'),
+        llamarApi('/recepciones'),
+        llamarApi('/indicadores')
+      ]);
+      estadoApp.contexto = ctx;
+      estadoApp.ventas = ventas;
+      estadoApp.validacionesPendientes = valPend;
+      estadoApp.sustituciones = susts;
+      estadoApp.diferencias = difs;
+      estadoApp.resurtidos = resurt;
+      estadoApp.recepciones = recs;
+      estadoApp.indicadores = ind;
+
+      const sucFiltro = document.getElementById('inv-sucursal-filtro').value || 'SUC-01';
+      estadoApp.inventarioSucursal = await llamarApi(`/inventarios-sucursal/${sucFiltro}`);
+
+      await renderizarTodo();
+    }
+
+    async function renderizarTodo() {
+      renderizarKPIsYContadores();
+      renderizarSelectoresProductos();
+      await renderizarSeccionVentas();
+      renderizarSeccionFarmacia();
+      renderizarTablaInventario();
+      await consultarDisponibilidadMultisucursal();
+      renderizarSeccionAlmacen();
+      renderizarSeccionCompras();
+      await renderizarSeccionAdmin();
+    }
+
+    function renderizarKPIsYContadores() {
+      const ind = estadoApp.indicadores?.indicadores || {};
+      document.getElementById('kpi-bajo-minimo').textContent = ind.IND_01_productos_bajo_nivel_minimo ?? 0;
+      document.getElementById('kpi-proximos').textContent = ind.IND_02_productos_proximos_a_caducar ?? 0;
+      document.getElementById('kpi-caducados').textContent = ind.IND_03_incidencias_productos_caducados ?? 0;
+      document.getElementById('kpi-retirados').textContent = ind.IND_04_lotes_retirados_bloqueados ?? 0;
+      document.getElementById('kpi-diferencias').textContent = ind.IND_05_diferencias_de_inventario ?? 0;
+
+      const dias = estadoApp.contexto?.politica_dias_proximidad_caducidad || 30;
+      document.getElementById('badge-politica-dias').textContent = `Política actual: Lotes próximos a caducar ≤ ${dias} días (BR-12)`;
+      document.getElementById('pol-dias').value = dias;
+
+      // Badges de pendientes en pestañas
+      const pendFarmacia = estadoApp.validacionesPendientes.length +
+        estadoApp.sustituciones.filter(s => s.estado === 'REGISTRADA' || s.estado === 'APROBADA_POR_FARMACIA').length;
+      const badgeFarm = document.getElementById('badge-farmacia');
+      badgeFarm.style.display = pendFarmacia > 0 ? 'inline-block' : 'none';
+      badgeFarm.textContent = pendFarmacia;
+
+      const pendAlmacen = estadoApp.diferencias.filter(d => d.estado === 'PENDIENTE_REVISION').length;
+      const badgeAlm = document.getElementById('badge-almacen');
+      badgeAlm.style.display = pendAlmacen > 0 ? 'inline-block' : 'none';
+      badgeAlm.textContent = pendAlmacen;
+
+      const pendCompras = estadoApp.resurtidos.filter(r => r.estado === 'PENDIENTE_ANALISIS').length;
+      const badgeComp = document.getElementById('badge-compras');
+      badgeComp.style.display = pendCompras > 0 ? 'inline-block' : 'none';
+      badgeComp.textContent = pendCompras;
+    }
+
+    function renderizarSelectoresProductos() {
+      const prods = estadoApp.contexto?.productos || [];
+      const idsSelect = ['venta-prod-id', 'sust-prod-orig', 'multi-prod-select', 'rec-producto'];
+      idsSelect.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const valPrevio = el.value;
+        el.innerHTML = prods.map(p =>
+          `<option value="${p.id}">${p.id} · ${p.nombre} ($${p.precio} MXN)${p.requiere_validacion_especial ? ' [Requiere Receta BR-04]' : ''}</option>`
+        ).join('');
+        if (valPrevio && prods.some(p => p.id === valPrevio)) {
+          el.value = valPrevio;
+        }
+      });
+
+      // Selector de ventas
+      const selVenta = document.getElementById('select-venta-activa');
+      const selSustVenta = document.getElementById('sust-venta-id');
+      selVenta.innerHTML = estadoApp.ventas.map(v =>
+        `<option value="${v.id}">${v.id} · ${traducirEstadoVenta(v.estado)} ($${v.total} MXN)</option>`
+      ).join('');
+      if (estadoApp.ventas.some(v => v.id === estadoApp.ventaSeleccionadaId)) {
+        selVenta.value = estadoApp.ventaSeleccionadaId;
+      } else if (estadoApp.ventas.length) {
+        estadoApp.ventaSeleccionadaId = estadoApp.ventas[0].id;
+      }
+
+      selSustVenta.innerHTML = estadoApp.ventas
+        .filter(v => v.estado === 'EN_CAPTURA')
+        .map(v => `<option value="${v.id}">${v.id} (${v.sucursal_id})</option>`)
+        .join('');
+    }
+
+    function traducirEstadoVenta(estado) {
+      if (estado === 'EN_CAPTURA') return 'En captura (Caja abierta)';
+      if (estado === 'COMPLETADA') return 'Completada y cobrada';
+      if (estado === 'RECHAZADA') return 'Rechazada / Cancelada';
+      return estado;
+    }
+
+    function traducirEstadoValidacion(val) {
+      if (val === 'NO_REQUERIDA') return '<span class="badge badge-success">Venta libre (No requiere validación)</span>';
+      if (val === 'PENDIENTE') return '<span class="badge badge-warn">Pendiente autorización de Farmacia (BR-04/BR-05)</span>';
+      if (val === 'APROBADA') return '<span class="badge badge-success">Autorizada por Responsable de Farmacia</span>';
+      if (val === 'RECHAZADA') return '<span class="badge badge-danger">Rechazada por Farmacia</span>';
+      return val;
+    }
+
+    async function cargarVentaSeleccionada() {
+      estadoApp.ventaSeleccionadaId = document.getElementById('select-venta-activa').value;
+      await renderizarSeccionVentas();
+    }
+
+    async function renderizarSeccionVentas() {
+      await actualizarInfoProductoVenta();
+      const venta = estadoApp.ventas.find(v => v.id === estadoApp.ventaSeleccionadaId);
+      const box = document.getElementById('detalle-venta-box');
+      if (!venta) {
+        box.innerHTML = '<div class="empty-msg">No hay ninguna venta seleccionada.</div>';
+        return;
+      }
+
+      let badgeEstado = '<span class="badge badge-info">En captura (Abierta)</span>';
+      if (venta.estado === 'COMPLETADA') badgeEstado = '<span class="badge badge-success">Completada y Cobrada</span>';
+      if (venta.estado === 'RECHAZADA') badgeEstado = `<span class="badge badge-danger">Rechazada (${venta.motivo_de_rechazo || 'Operación cancelada'})</span>`;
+
+      const filasHtml = venta.lineas.length ? venta.lineas.map(l => `
+        <tr>
+          <td><strong>${l.nombre_producto}</strong><br><small style="color:#64748b;">Código: ${l.producto_id}</small></td>
+          <td><code>${l.lote}</code></td>
+          <td>${l.cantidad}</td>
+          <td>$${l.precio_unitario}</td>
+          <td><strong>$${l.subtotal}</strong></td>
+          <td>
+            ${traducirEstadoValidacion(l.validacion)}
+            ${l.requisito_descripcion ? `<div style="font-size:11.5px; color:#475569; margin-top:3px;">${l.requisito_descripcion}</div>` : ''}
+            ${l.responsable_validacion ? `<div style="font-size:11px; color:#0f766e;">Validó: ${l.responsable_validacion}</div>` : ''}
+          </td>
+        </tr>
+      `).join('') : `<tr><td colspan="6" class="empty-msg">Esta venta aún no tiene productos registrados.</td></tr>`;
+
+      const alertaPendiente = venta.requiere_validacion_responsable
+        ? `<div style="margin-top:14px; padding:12px 16px; border-radius:8px; background:#fef3c7; color:#92400e; font-size:13px;">
+             <strong>Atención (BR-04 y BR-05):</strong> Esta venta incluye medicamentos sujetos a requisitos especiales.
+             No se puede cobrar hasta que el <strong>Responsable de Farmacia</strong> la valide en la pestaña 2 (o intenta cobrarla aquí para ver cómo el sistema protege la regla).
+           </div>`
+        : '';
+
+      const botonesCobro = venta.estado === 'EN_CAPTURA'
+        ? `<div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+             <button class="btn btn-warn btn-sm" onclick="cobrarVentaActual(true)">
+               Simular Pago Rechazado por Banco (ADR-004)
+             </button>
+             <button class="btn btn-primary" onclick="cobrarVentaActual(false)">
+               ✓ Completar y Cobrar Venta ($${venta.total} MXN)
+             </button>
+           </div>`
+        : '';
+
+      box.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+          <div>
+            <span style="font-size:13px; color:#475569;">Folio: <strong>${venta.id}</strong> · Sucursal: <strong>${venta.nombre_sucursal}</strong> · Cajero: <strong>${venta.cajero_id}</strong></span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            ${badgeEstado}
+            <span style="font-size:18px; font-weight:800; color:#0f766e;">Total: $${venta.total} MXN</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Lote</th>
+                <th>Cant.</th>
+                <th>Precio Unit.</th>
+                <th>Subtotal</th>
+                <th>Validación Farmacéutica (BR-04)</th>
+              </tr>
+            </thead>
+            <tbody>${filasHtml}</tbody>
+          </table>
+        </div>
+        ${alertaPendiente}
+        ${botonesCobro}
+      `;
+    }
+
+    async function actualizarInfoProductoVenta() {
+      const prodId = document.getElementById('venta-prod-id').value;
+      if (!prodId) return;
+      const venta = estadoApp.ventas.find(v => v.id === estadoApp.ventaSeleccionadaId);
+      const sucursalId = venta ? venta.sucursal_id : 'SUC-01';
+      const prod = (estadoApp.contexto?.productos || []).find(p => p.id === prodId);
+
+      const hint = document.getElementById('info-requisito-prod');
+      if (prod && prod.requiere_validacion_especial) {
+        hint.innerHTML = `<strong style="color:#b45309;">Requisito especial (BR-04):</strong> ${prod.requisito_especial}. Al agregarlo quedará pendiente de autorización por el Responsable de Farmacia.`;
+      } else {
+        hint.textContent = 'Producto de venta libre (no requiere autorización adicional de farmacia).';
+      }
+
+      const respInv = await llamarApi(`/inventarios/${prodId}/${sucursalId}`);
+      const lotes = respInv.informacion?.lotes || [];
+      const selLote = document.getElementById('venta-lote');
+      let opciones = `<option value="">Asignación automática FEFO (Recomendado)</option>`;
+      lotes.forEach(l => {
+        let etiqueta = `${l.numero} · Stock: ${l.cantidad} · Vence: ${l.caducidad}`;
+        if (l.caducado) etiqueta += ' [BLOQUEADO: CADUCADO - BR-02]';
+        else if (l.estado === 'RETIRADO') etiqueta += ' [BLOQUEADO: RETIRADO - BR-03]';
+        else if (l.proximo_a_caducar) etiqueta += ' [Próximo a caducar - BR-11]';
+        opciones += `<option value="${l.numero}">${etiqueta}</option>`;
+      });
+      selLote.innerHTML = opciones;
+    }
+
+    async function crearNuevaVentaRapida() {
+      const nuevoNum = estadoApp.ventas.length + 1;
+      const nuevoId = `V-00${nuevoNum}`;
+      try {
+        await llamarApi('/orders', 'POST', {
+          venta_id: nuevoId,
+          cajero_id: estadoApp.usuarioId,
+          sucursal_id: 'SUC-01'
+        });
+        estadoApp.ventaSeleccionadaId = nuevoId;
+        notificar(`Se abrió la nueva venta ${nuevoId} en Sucursal Centro.`);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function agregarProductoAVenta(e) {
+      e.preventDefault();
+      const prodId = document.getElementById('venta-prod-id').value;
+      const lote = document.getElementById('venta-lote').value || null;
+      const cant = Number(document.getElementById('venta-cantidad').value);
+      try {
+        const res = await llamarApi(`/orders/${estadoApp.ventaSeleccionadaId}/lineas`, 'POST', {
+          producto_id: prodId,
+          numero_lote: lote,
+          cantidad: cant,
+          validar_en_inventario: true
+        });
+        notificar(res.mensaje_para_cliente);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function cobrarVentaActual(simularFallo) {
+      try {
+        const res = await llamarApi(`/orders/${estadoApp.ventaSeleccionadaId}/completar?simular_fallo_pago=${simularFallo}`, 'POST');
+        notificar(`${res.mensaje_para_cliente} El inventario se descontó automáticamente (US-17).`);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+        await cargarDatosGlobales();
+      }
+    }
+
+    // Demostraciones en 1 clic de reglas de bloqueo en venta
+    async function probarReglaCaducado() {
+      try {
+        await llamarApi(`/orders/${estadoApp.ventaSeleccionadaId}/lineas`, 'POST', {
+          producto_id: 'PROD-03',
+          numero_lote: 'LOTE-CAD-301',
+          cantidad: 1,
+          precio_unitario: 290.0
+        });
+      } catch (err) {
+        notificar(`Demostración exitosa (BR-02 / US-04): ${err.message}`, true);
+      }
+    }
+
+    async function probarReglaRetirado() {
+      try {
+        await llamarApi(`/orders/${estadoApp.ventaSeleccionadaId}/lineas`, 'POST', {
+          producto_id: 'PROD-05',
+          numero_lote: 'LOTE-RET-501',
+          cantidad: 1,
+          precio_unitario: 195.0
+        });
+      } catch (err) {
+        notificar(`Demostración exitosa (BR-03 / US-06): ${err.message}`, true);
+      }
+    }
+
+    async function probarReglaSinExistencia() {
+      try {
+        await llamarApi(`/orders/${estadoApp.ventaSeleccionadaId}/lineas`, 'POST', {
+          producto_id: 'PROD-06',
+          cantidad: 1,
+          validar_en_inventario: true
+        });
+      } catch (err) {
+        notificar(`Demostración exitosa (BR-01 / US-02): ${err.message}`, true);
+      }
+    }
+
+    // =========================================================
+    // SECCIÓN 2: FARMACIA, VALIDACIONES Y SUSTITUCIONES
+    // =========================================================
+    function renderizarSeccionFarmacia() {
+      // 1. Validaciones especiales pendientes
+      const contVal = document.getElementById('lista-validaciones-pendientes');
+      if (!estadoApp.validacionesPendientes.length) {
+        contVal.innerHTML = '<div class="empty-msg">No hay medicamentos con validación pendiente en este momento.</div>';
+      } else {
+        contVal.innerHTML = `<div class="item-list">` + estadoApp.validacionesPendientes.map(vp => `
+          <div class="item-box">
+            <div class="item-box-main">
+              <h4>Venta ${vp.venta_id} · ${vp.nombre_producto} (Cant: ${vp.cantidad})</h4>
+              <p><strong>Requisito obligatorio:</strong> ${vp.requisito_especial} · Lote: <code>${vp.lote}</code></p>
+              <p style="font-size:12px; color:#0f766e;">Nota: Si intentas aprobar con rol Cajero, el sistema demostrará el bloqueo BR-05 (403 Forbidden).</p>
+            </div>
+            <div class="item-box-actions">
+              <button class="btn btn-primary btn-sm" onclick="resolverValidacion('${vp.venta_id}', '${vp.linea_id}', true)">
+                ✓ Autorizar Venta (BR-05)
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="resolverValidacion('${vp.venta_id}', '${vp.linea_id}', false)">
+                ✕ Rechazar por falta de receta
+              </button>
+            </div>
+          </div>
+        `).join('') + `</div>`;
+      }
+
+      // 2. Solicitudes de sustitución
+      const contSust = document.getElementById('lista-sustituciones');
+      if (!estadoApp.sustituciones.length) {
+        contSust.innerHTML = '<div class="empty-msg">No hay solicitudes de sustitución registradas.</div>';
+      } else {
+        contSust.innerHTML = `<div class="item-list">` + estadoApp.sustituciones.map(s => {
+          let acciones = '';
+          if (s.estado === 'REGISTRADA') {
+            const altSugerida = s.producto_original === 'PROD-06' ? 'PROD-05' : 'PROD-04';
+            acciones = `
+              <button class="btn btn-primary btn-sm" onclick="validarSustitucionFarmacia('${s.id}', '${altSugerida}', true)">
+                ✓ Farmacia: Aprobar alternativa (${altSugerida})
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="validarSustitucionFarmacia('${s.id}', '${altSugerida}', false)">
+                ✕ Farmacia: Rechazar sustitución
+              </button>
+            `;
+          } else if (s.estado === 'APROBADA_POR_FARMACIA') {
+            acciones = `
+              <button class="btn btn-primary btn-sm" onclick="registrarDecisionCliente('${s.id}', true)">
+                ✓ Cliente acepta alternativa (Agregar a venta)
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="registrarDecisionCliente('${s.id}', false)">
+                ✕ Cliente no acepta
+              </button>
+            `;
+          }
+          return `
+            <div class="item-box">
+              <div class="item-box-main">
+                <h4>${s.id} · Venta ${s.venta_id} · Original sin stock: ${s.nombre_original}</h4>
+                <p>Estado: <span class="badge badge-info">${s.estado.replaceAll('_', ' ')}</span>
+                   ${s.nombre_alternativa ? ` · Alternativa propuesta: <strong>${s.nombre_alternativa}</strong>` : ''}</p>
+                <p>${s.motivo}</p>
+              </div>
+              <div class="item-box-actions">${acciones}</div>
+            </div>
+          `;
+        }).join('') + `</div>`;
+      }
+
+      // 3. Lotes retirados
+      cargarLotesParaRetiro();
+      const retirados = estadoApp.indicadores?.reportes?.REP_04_lotes_retirados || [];
+      const contRet = document.getElementById('lista-lotes-retirados');
+      contRet.innerHTML = retirados.length ? `<div class="item-list">` + retirados.map(r => `
+        <div class="item-box">
+          <div class="item-box-main">
+            <h4>Lote <code>${r.lote}</code> · ${r.nombre} (${r.sucursal_id})</h4>
+            <p><span class="badge badge-danger">RETIRADO Y BLOQUEADO</span> · Unidades retenidas: ${r.cantidad_bloqueada} · Caducidad: ${r.caducidad}</p>
+            <p>Motivo: ${r.motivo_retiro} · Responsable: ${r.retirado_por}</p>
+          </div>
+        </div>
+      `).join('') + `</div>` : '<div class="empty-msg">No hay lotes retirados.</div>';
+    }
+
+    async function resolverValidacion(ventaId, lineaId, aprueba) {
+      try {
+        const res = await llamarApi(`/orders/${ventaId}/validaciones`, 'POST', {
+          linea_o_producto_id: lineaId,
+          aprueba: aprueba,
+          responsable_id: estadoApp.usuarioId,
+          rol_usuario: estadoApp.rol,
+          motivo: aprueba ? 'Receta médica y requisitos verificados por Responsable de Farmacia' : 'Cliente no presentó receta obligatoria'
+        });
+        notificar(res.mensaje);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function registrarSolicitudSustitucion(e) {
+      e.preventDefault();
+      const ventaId = document.getElementById('sust-venta-id').value;
+      const prodOrig = document.getElementById('sust-prod-orig').value;
+      const cant = Number(document.getElementById('sust-cantidad').value);
+      try {
+        const res = await llamarApi('/sustituciones', 'POST', {
+          venta_id: ventaId,
+          producto_original_id: prodOrig,
+          cantidad: cant,
+          motivo: 'Solicitada por el cliente ante falta de disponibilidad'
+        });
+        notificar(res.mensaje);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function validarSustitucionFarmacia(solicitudId, alternativaId, aprueba) {
+      try {
+        const res = await llamarApi(`/sustituciones/${solicitudId}/validar`, 'POST', {
+          alternativa_id: alternativaId,
+          aprueba: aprueba,
+          responsable_id: estadoApp.usuarioId,
+          rol_usuario: estadoApp.rol,
+          observacion: aprueba ? 'Alternativa equivalente validada y autorizada por farmacia' : 'No procede sustitución'
+        });
+        notificar(res.mensaje);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function registrarDecisionCliente(solicitudId, acepta) {
+      try {
+        const res = await llamarApi(`/sustituciones/${solicitudId}/decision-cliente`, 'POST', {
+          acepta: acepta
+        });
+        notificar(res.mensaje);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function cargarLotesParaRetiro() {
+      const suc = document.getElementById('ret-sucursal').value;
+      const invs = await llamarApi(`/inventarios-sucursal/${suc}`);
+      const combo = document.getElementById('ret-lote-combo');
+      const opciones = [];
+      invs.forEach(item => {
+        (item.lotes || []).forEach(l => {
+          if (l.estado === 'DISPONIBLE') {
+            opciones.push(`<option value="${item.producto_id}|${l.numero}">${item.nombre_producto} · Lote ${l.numero} (${l.cantidad} uds)</option>`);
+          }
+        });
+      });
+      combo.innerHTML = opciones.length ? opciones.join('') : '<option value="">Sin lotes disponibles</option>';
+    }
+
+    async function retirarLoteOperacion(e) {
+      e.preventDefault();
+      const suc = document.getElementById('ret-sucursal').value;
+      const val = document.getElementById('ret-lote-combo').value;
+      if (!val) return;
+      const [prodId, numLote] = val.split('|');
+      const motivo = document.getElementById('ret-motivo').value;
+      try {
+        const res = await llamarApi('/lotes/retirar', 'POST', {
+          producto_id: prodId,
+          sucursal_id: suc,
+          numero_lote: numLote,
+          responsable: estadoApp.usuarioId,
+          rol_usuario: estadoApp.rol,
+          motivo: motivo
+        });
+        notificar(res.mensaje);
+        document.getElementById('ret-motivo').value = '';
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    // =========================================================
+    // SECCIÓN 3: INVENTARIO POR LOTE Y MULTISUCURSAL
+    // =========================================================
+    async function cargarInventarioSucursal() {
+      const sucFiltro = document.getElementById('inv-sucursal-filtro').value;
+      estadoApp.inventarioSucursal = await llamarApi(`/inventarios-sucursal/${sucFiltro}`);
+      renderizarTablaInventario();
+    }
+
+    function renderizarTablaInventario() {
+      const tbody = document.getElementById('tabla-inventario-body');
+      tbody.innerHTML = estadoApp.inventarioSucursal.map(item => {
+        let estadoStock = '<span class="badge badge-success">Disponible para venta</span>';
+        if (item.existencia_vendible === 0) {
+          estadoStock = '<span class="badge badge-danger">Sin existencia disponible (BR-01)</span>';
+        } else if (item.existencia_vendible < item.nivel_minimo) {
+          estadoStock = '<span class="badge badge-warn">Alerta: Existencia baja (BR-09)</span>';
+        }
+
+        const lotesHtml = item.lotes.length ? item.lotes.map(l => {
+          let chip = '<span class="badge badge-success">Vigente y vendible</span>';
+          if (l.estado === 'RETIRADO') chip = '<span class="badge badge-danger">Bloqueado: Lote Retirado (BR-03)</span>';
+          else if (l.caducado) chip = '<span class="badge badge-danger">Bloqueado: Caducado (BR-02)</span>';
+          else if (l.proximo_a_caducar) chip = '<span class="badge badge-warn">Próximo a caducar (BR-11)</span>';
+
+          return `<div style="margin-bottom:6px; padding:6px 10px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0;">
+                    <code>${l.numero}</code> · <strong>${l.cantidad} uds</strong> · Caducidad: <strong>${l.caducidad}</strong> ${chip}
+                  </div>`;
+        }).join('') : '<span style="color:#94a3b8; font-size:13px;">Sin lotes registrados en esta sucursal</span>';
+
+        return `
+          <tr>
+            <td><strong>${item.nombre_producto}</strong><br><small style="color:#64748b;">${item.producto_id} · $${item.precio} MXN</small></td>
+            <td>
+              <span class="badge badge-info">${item.tipo.replace('_', ' ')}</span>
+              ${item.requiere_validacion_especial ? `<div style="font-size:11.5px; color:#b45309; margin-top:4px;">⚡ ${item.requisito_especial}</div>` : ''}
+            </td>
+            <td><strong style="font-size:16px;">${item.existencia_vendible} uds</strong> <small style="color:#64748b;">(Total físico: ${item.existencia_total})</small></td>
+            <td>${item.nivel_minimo} uds</td>
+            <td>${estadoStock}</td>
+            <td>${lotesHtml}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function consultarDisponibilidadMultisucursal() {
+      const prodId = document.getElementById('multi-prod-select').value || 'PROD-06';
+      const data = await llamarApi(`/disponibilidad-sucursales/${prodId}`);
+      const box = document.getElementById('multisucursal-box');
+      box.innerHTML = `
+        <div style="margin-bottom:12px; font-size:14px;">
+          Existencia total vendible en toda la cadena FarmaExpress: <strong>${data.total_global_vendible} unidades</strong>
+        </div>
+        <div class="kpi-grid" style="margin-bottom:0;">
+          ${data.sucursales.map(s => `
+            <div class="kpi-card">
+              <span class="kpi-label">${s.sucursal_id} · ${s.nombre_sucursal}</span>
+              <strong class="kpi-value" style="color:${s.tiene_disponibilidad ? '#0f766e' : '#dc2626'};">
+                ${s.existencia_vendible} uds
+              </strong>
+              <span class="kpi-help">
+                ${s.tiene_disponibilidad
+                  ? `<span class="badge badge-success">Disponible en esta sucursal</span>`
+                  : `<span class="badge badge-danger">Sin existencia vendible</span>`}
+              </span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // =========================================================
+    // SECCIÓN 4: ALMACÉN, RECEPCIÓN Y DIFERENCIAS
+    // =========================================================
+    function renderizarSeccionAlmacen() {
+      const inputCad = document.getElementById('rec-caducidad');
+      if (!inputCad.value) {
+        const d = new Date();
+        d.setMonth(d.getMonth() + 8);
+        inputCad.value = d.toISOString().slice(0, 10);
+      }
+
+      // Historial recepciones
+      const contRec = document.getElementById('lista-recepciones');
+      contRec.innerHTML = estadoApp.recepciones.length ? `<div class="item-list">` + estadoApp.recepciones.map(r => `
+        <div class="item-box">
+          <div class="item-box-main">
+            <h4>Folio ${r.id} · Sucursal ${r.sucursal_id} · Fecha: ${r.fecha}</h4>
+            <p>${r.lineas.map(l => `${l.nombre_producto} · Lote <code>${l.lote}</code> · ${l.cantidad} uds (Cad: ${l.caducidad})`).join(', ')}</p>
+          </div>
+          <span class="badge badge-success">Recibido por ${r.responsable}</span>
+        </div>
+      `).join('') + `</div>` : '<div class="empty-msg">Aún no se han registrado nuevas recepciones en esta sesión.</div>';
+
+      cargarLotesParaDiferencia();
+
+      // Lista de diferencias
+      const contDif = document.getElementById('lista-diferencias');
+      contDif.innerHTML = estadoApp.diferencias.length ? `<div class="item-list">` + estadoApp.diferencias.map(d => {
+        let badge = '<span class="badge badge-warn">Pendiente de revisión (BR-13)</span>';
+        if (d.estado === 'AJUSTE_APROBADO') badge = `<span class="badge badge-success">Ajuste autorizado por ${d.revisado_por}</span>`;
+        if (d.estado === 'AJUSTE_RECHAZADO') badge = `<span class="badge badge-danger">Ajuste rechazado por ${d.revisado_por}</span>`;
+
+        const botones = d.estado === 'PENDIENTE_REVISION' ? `
+          <button class="btn btn-primary btn-sm" onclick="revisarDiferenciaInventario('${d.id}', true)">
+            ✓ Autorizar Ajuste (RF-15)
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="revisarDiferenciaInventario('${d.id}', false)">
+            ✕ Rechazar Ajuste
+          </button>
+        ` : '';
+
+        return `
+          <div class="item-box">
+            <div class="item-box-main">
+              <h4>${d.id} · ${d.nombre_producto} (${d.sucursal_id} · Lote <code>${d.lote}</code>)</h4>
+              <p>Registrado en sistema: <strong>${d.cantidad_registrada} uds</strong> · Físico contado: <strong>${d.cantidad_fisica} uds</strong> · Diferencia: <strong>${d.diferencia} uds</strong></p>
+              <p>Hallazgo: ${d.motivo} · Reportó: ${d.reportado_por}</p>
+              <div style="margin-top:4px;">${badge} ${d.observacion_revision ? `<small style="color:#475569;">(${d.observacion_revision})</small>` : ''}</div>
+            </div>
+            <div class="item-box-actions">${botones}</div>
+          </div>
+        `;
+      }).join('') + `</div>` : '<div class="empty-msg">No hay diferencias de inventario registradas.</div>';
+    }
+
+    async function cargarLotesParaDiferencia() {
+      const suc = document.getElementById('dif-sucursal').value;
+      const invs = await llamarApi(`/inventarios-sucursal/${suc}`);
+      const combo = document.getElementById('dif-lote-combo');
+      const opciones = [];
+      invs.forEach(item => {
+        (item.lotes || []).forEach(l => {
+          opciones.push(`<option value="${item.producto_id}|${l.numero}">${item.nombre_producto} · Lote ${l.numero} (Registrado: ${l.cantidad} uds)</option>`);
+        });
+      });
+      combo.innerHTML = opciones.join('');
+    }
+
+    async function registrarRecepcionAlmacen(e) {
+      e.preventDefault();
+      try {
+        const res = await llamarApi('/recepciones', 'POST', {
+          sucursal_id: document.getElementById('rec-sucursal').value,
+          producto_id: document.getElementById('rec-producto').value,
+          numero_lote: document.getElementById('rec-lote').value,
+          caducidad: document.getElementById('rec-caducidad').value,
+          cantidad: Number(document.getElementById('rec-cantidad').value),
+          responsable: estadoApp.usuarioId,
+          rol_usuario: estadoApp.rol
+        });
+        notificar(res.mensaje);
+        document.getElementById('rec-lote').value = '';
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function registrarDiferenciaFisica(e) {
+      e.preventDefault();
+      const suc = document.getElementById('dif-sucursal').value;
+      const val = document.getElementById('dif-lote-combo').value;
+      if (!val) return;
+      const [prodId, numLote] = val.split('|');
+      try {
+        const res = await llamarApi('/diferencias-inventario', 'POST', {
+          producto_id: prodId,
+          sucursal_id: suc,
+          numero_lote: numLote,
+          cantidad_fisica: Number(document.getElementById('dif-fisica').value),
+          motivo: document.getElementById('dif-motivo').value,
+          reportado_por: estadoApp.usuarioId,
+          rol_usuario: estadoApp.rol
+        });
+        notificar(res.mensaje);
+        document.getElementById('dif-motivo').value = '';
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function revisarDiferenciaInventario(difId, aprobar) {
+      try {
+        const res = await llamarApi(`/diferencias-inventario/${difId}/revisar`, 'POST', {
+          aprobar_ajuste: aprobar,
+          revisado_por: estadoApp.usuarioId,
+          rol_usuario: estadoApp.rol,
+          observacion: aprobar
+            ? 'Revisión física confirmada por supervisión; se autoriza ajuste en inventario'
+            : 'Error de conteo; se rechaza ajuste'
+        });
+        notificar(res.mensaje);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    // =========================================================
+    // SECCIÓN 5: COMPRAS Y ANÁLISIS DE RESURTIDO
+    // =========================================================
+    function renderizarSeccionCompras() {
+      const cont = document.getElementById('lista-resurtidos');
+      if (!estadoApp.resurtidos.length) {
+        cont.innerHTML = '<div class="empty-msg">No hay necesidades de resurtido activas.</div>';
+        return;
+      }
+      cont.innerHTML = `<div class="item-list">` + estadoApp.resurtidos.map(r => {
+        let badge = '<span class="badge badge-warn">Pendiente de Análisis de Compras (BR-09 / BR-10)</span>';
+        if (r.estado === 'SOLICITADO_A_PROVEEDOR') badge = `<span class="badge badge-info">Resurtido solicitado (${r.cantidad_solicitada} uds) por ${r.analizado_por}</span>`;
+        if (r.estado === 'DESCARTADO') badge = `<span class="badge badge-danger">Descartado tras análisis por ${r.analizado_por}</span>`;
+        if (r.estado === 'SURTIDO') badge = `<span class="badge badge-success">Surtido y recibido en Almacén</span>`;
+
+        const acciones = r.estado === 'PENDIENTE_ANALISIS' ? `
+          <button class="btn btn-primary btn-sm" onclick="analizarResurtidoCompras('${r.id}', true)">
+            ✓ Compras: Aprobar y Solicitar 30 uds (US-12)
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="analizarResurtidoCompras('${r.id}', false)">
+            ✕ Descartar por baja rotación
+          </button>
+        ` : '';
+
+        return `
+          <div class="item-box">
+            <div class="item-box-main">
+              <h4>${r.id} · ${r.nombre_producto} · ${r.nombre_sucursal}</h4>
+              <p>Existencia vendible actual: <strong style="color:#dc2626;">${r.existencia_actual} uds</strong> · Nivel mínimo requerido: <strong>${r.nivel_minimo} uds</strong></p>
+              <div style="margin-top:4px;">${badge} ${r.justificacion ? `<small style="color:#475569;">(${r.justificacion})</small>` : ''}</div>
+            </div>
+            <div class="item-box-actions">${acciones}</div>
+          </div>
+        `;
+      }).join('') + `</div>`;
+    }
+
+    async function analizarResurtidoCompras(resId, solicitar) {
+      try {
+        const res = await llamarApi(`/resurtidos/${resId}/analizar`, 'POST', {
+          solicitar_abastecimiento: solicitar,
+          analizado_por: estadoApp.usuarioId,
+          rol_usuario: estadoApp.rol,
+          cantidad_solicitada: solicitar ? 30 : 0,
+          justificacion: solicitar
+            ? 'Análisis de Compras (BR-10): Producto debajo del mínimo; se solicita orden de reposición de 30 unidades'
+            : 'Análisis de Compras (BR-10): Existe inventario suficiente en sucursal cercana'
+        });
+        notificar(res.mensaje);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    // =========================================================
+    // SECCIÓN 6: ADMINISTRACIÓN, INDICADORES Y TRAZABILIDAD
+    // =========================================================
+    async function renderizarSeccionAdmin() {
+      const rep = estadoApp.indicadores?.reportes || {};
+      const box = document.getElementById('admin-reportes-box');
+
+      box.innerHTML = `
+        <h4 style="margin:0 0 8px;">REP-01: Productos con existencia baja (${(rep.REP_01_existencia_baja || []).length})</h4>
+        <div style="margin-bottom:16px;">
+          ${(rep.REP_01_existencia_baja || []).map(x =>
+            `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #f1f5f9;">
+               <strong>${x.nombre}</strong> (${x.sucursal_id}) · Vendible: <strong>${x.existencia_vendible}</strong> / Mínimo: ${x.nivel_minimo} (Déficit: ${x.deficit} uds)
+             </div>`
+          ).join('') || '<small style="color:#64748b;">Ningún producto bajo el mínimo.</small>'}
+        </div>
+
+        <h4 style="margin:0 0 8px;">REP-02: Lotes próximos a caducar (${(rep.REP_02_proximos_a_caducar || []).length})</h4>
+        <div style="margin-bottom:16px;">
+          ${(rep.REP_02_proximos_a_caducar || []).map(x =>
+            `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #f1f5f9;">
+               Lote <code>${x.lote}</code> · <strong>${x.nombre}</strong> (${x.sucursal_id}) · Vence en <strong>${x.dias_restantes} días</strong> (${x.caducidad})
+             </div>`
+          ).join('') || '<small style="color:#64748b;">Sin lotes próximos a caducar.</small>'}
+        </div>
+
+        <h4 style="margin:0 0 8px;">REP-03: Lotes caducados bloqueados (${(rep.REP_03_productos_caducados || []).length})</h4>
+        <div>
+          ${(rep.REP_03_productos_caducados || []).map(x =>
+            `<div style="font-size:13px; padding:6px 0; border-bottom:1px solid #f1f5f9;">
+               Lote <code>${x.lote}</code> · <strong>${x.nombre}</strong> (${x.sucursal_id}) · Vencido hace <strong>${x.dias_vencido} días</strong> (${x.cantidad_bloqueada} uds bloqueadas)
+             </div>`
+          ).join('') || '<small style="color:#64748b;">Sin lotes caducados.</small>'}
+        </div>
+      `;
+
+      const bitacora = await llamarApi('/bitacora-eventos');
+      const bitBox = document.getElementById('bitacora-eventos-box');
+      if (!bitacora.historial || !bitacora.historial.length) {
+        bitBox.innerHTML = '<div class="empty-msg">Realiza una venta, validación, retiro o recepción para ver los eventos de dominio aquí.</div>';
+      } else {
+        bitBox.innerHTML = `<div class="item-list">` + bitacora.historial.map(ev => `
+          <div class="item-box" style="padding:10px 14px;">
+            <div class="item-box-main">
+              <h4 style="font-size:13.5px;"><span class="badge badge-info">${ev.evento}</span> · Fecha: ${ev.fecha}</h4>
+              <p style="font-size:12px;">${JSON.stringify(ev.detalles)}</p>
+            </div>
+          </div>
+        `).join('') + `</div>`;
+      }
+    }
+
+    async function guardarPoliticaCaducidad(e) {
+      e.preventDefault();
+      try {
+        const dias = Number(document.getElementById('pol-dias').value);
+        const res = await llamarApi('/politicas/caducidad', 'POST', {
+          dias_proximidad_caducidad: dias,
+          rol_usuario: estadoApp.rol
+        });
+        notificar(res.mensaje);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    async function reiniciarDemo() {
+      try {
+        const res = await llamarApi('/demo/reiniciar', 'POST');
+        estadoApp.ventaSeleccionadaId = 'V-001';
+        notificar(res.mensaje);
+        await cargarDatosGlobales();
+      } catch (err) {
+        notificar(err.message, true);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      cargarDatosGlobales();
+    });
+  </script>
+</body>
+</html>
